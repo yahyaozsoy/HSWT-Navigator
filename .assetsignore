@@ -1,0 +1,19 @@
+# Files in the repo that the website doesn't need (not uploaded to Cloudflare).
+.git
+.github
+.cache
+node_modules
+tools
+tests
+*.py
+wrangler.jsonc
+package.json
+package-lock.json
+README.md
+docs
+.wrangler
+www
+android
+ios
+capacitor.config.json
+db

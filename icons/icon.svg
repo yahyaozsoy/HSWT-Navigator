@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- HSWT Navigator app icon: map pin with mortarboard on the HSWT house colour (Pantone 376).
+       Our own mark – deliberately not the HSWT logo, which may only be used with its wordmark. -->
+  <rect width="512" height="512" rx="112" fill="#7ab800"/>
+  <path d="M256 92c-70 0-126 55-126 124 0 92 126 204 126 204s126-112 126-204c0-69-56-124-126-124z" fill="#fff"/>
+  <path d="M256 158l-62 32 62 32 62-32z M214 214v34c0 14 19 26 42 26s42-12 42-26v-34l-42 22z" fill="#446900"/>
+</svg>

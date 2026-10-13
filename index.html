@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f8fbe9" />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      // Resolve the theme before first paint so dark mode doesn't flash white.
+      try {
+        const t = JSON.parse(localStorage.getItem('hswt.theme'));
+        const dark = t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      } catch {}
+    </script>
+    <meta name="description" content="Räume, Büros, die Mensa und deine nächste Vorlesung an der HSWT finden." />
+    <title>HSWT Navigator</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+    <link rel="stylesheet" href="css/styles.css" />
+  </head>
+  <body>
+    <!-- Navigation layer: Liquid Glass. Content layer: Material 3. -->
+    <header class="app-bar glass">
+      <div class="brand">
+        <img src="icons/icon.svg" alt="" width="30" height="30" />
+        <span data-i18n="app.title">HSWT Navigator</span>
+      </div>
+      <div class="app-bar-actions">
+        <label class="campus-select" hidden>
+          <span class="visually-hidden">Campus</span>
+          <select id="campus-select"></select>
+        </label>
+        <button id="theme-btn" class="icon-btn pressable" type="button" data-i18n-title="settings.themeToggle" data-i18n-aria="settings.themeToggle"></button>
+        <div class="segmented-mini" role="group" data-i18n-aria="settings.language">
+          <button type="button" data-lang="de" lang="de">DE</button>
+          <button type="button" data-lang="en" lang="en">EN</button>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <!-- MAP -->
+      <section id="view-map" class="view active" data-i18n-aria="tab.map">
+        <div class="search">
+          <div class="search-field glass">
+            <svg class="icon" aria-hidden="true"><use href="icons/sprite.svg#search" /></svg>
+            <input
+              id="search-input"
+              type="search"
+              autocomplete="off"
+              enterkeyhint="search"
+              data-i18n-placeholder="search.placeholder"
+              data-i18n-aria="search.label"
+            />
+            <button id="search-clear" class="icon-btn pressable" type="button" hidden data-i18n-aria="search.clear">
+              <svg class="icon" aria-hidden="true"><use href="icons/sprite.svg#close" /></svg>
+            </button>
+          </div>
+          <div id="chips" class="chips" role="toolbar"></div>
+          <ul id="search-results" class="search-results glass" role="listbox" hidden></ul>
+        </div>
+        <div id="map" role="application" data-i18n-aria="tab.map"></div>
+
+        <div id="welcome" class="sheet glass welcome" hidden>
+          <h2 class="title-l" data-i18n="welcome.title"></h2>
+          <ul class="welcome-steps">
+            <li><span class="lead round"><svg class="icon" aria-hidden="true"><use href="icons/sprite.svg#search" /></svg></span><span data-i18n="welcome.search"></span></li>
+            <li><span class="lead round"><svg class="icon" aria-hidden="true"><use href="icons/sprite.svg#directions_walk" /></svg></span><span data-i18n="welcome.route"></span></li>
+            <li><span class="lead round"><svg class="icon" aria-hidden="true"><use href="icons/sprite.svg#event" /></svg></span><span data-i18n="welcome.today"></span></li>
+          </ul>
+          <button id="welcome-ok" class="btn btn-filled wide pressable" data-i18n="welcome.ok"></button>
+        </div>
+
+        <div id="sheet" class="sheet glass" hidden role="dialog" aria-live="polite">
+          <button id="sheet-handle" class="sheet-handle" type="button" aria-hidden="true" tabindex="-1"></button>
+          <button id="sheet-close" class="icon-btn sheet-close pressable" data-i18n-aria="close">
+            <svg class="icon" aria-hidden="true"><use href="icons/sprite.svg#close" /></svg>
+          </button>
+          <div id="sheet-body"></div>
+        </div>
+
+        <!-- live navigation -->
+        <div id="nav-hud" class="nav-hud" hidden aria-live="polite">
+          <div class="nav-instruction">
+            <span id="nav-icon" class="nav-maneuver" aria-hidden="true"></span>
+            <div class="nav-text"><div id="nav-big" class="nav-big"></div><div id="nav-small" class="nav-small"></div></div>
+          </div>
+          <div class="nav-bottom glass">
+            <div class="nav-stats"><div id="nav-time" class="nav-time"></div><div id="nav-eta" class="nav-eta"></div></div>
+            <button id="nav-recenter" class="icon-btn pressable" type="button" data-i18n-aria="nav.recenter" hidden>
+              <svg class="icon" aria-hidden="true"><use href="icons/sprite.svg#my_location" /></svg>
+            </button>
+            <button id="nav-voice" class="icon-btn pressable" type="button"></button>
+            <button id="nav-stop" class="btn btn-danger pressable" type="button"></button>
+          </div>
+        </div>
+
+        <button id="locate-btn" class="map-fab glass pressable" data-i18n-title="locate.title" data-i18n-aria="locate.title">
+          <svg class="icon" aria-hidden="true"><use href="icons/sprite.svg#my_location" /></svg>
+        </button>
+      </section>
+
+      <!-- TODAY -->
+      <section id="view-today" class="view" data-i18n-aria="tab.today">
+        <div class="view-inner">
+          <div id="next-card" class="card hero"></div>
+          <div id="lunch-card" class="card tonal-card" hidden></div>
+
+          <h2 class="section-title" data-i18n="today.heading"></h2>
+          <ul id="today-list" class="list"></ul>
+
+          <h2 class="section-title" data-i18n="timetable.heading"></h2>
+          <ul id="timetable-list" class="list"></ul>
+
+          <details class="card" style="margin-top: 12px">
+            <summary data-i18n="form.add"></summary>
+            <form id="class-form" class="form">
+              <label class="field"><span data-i18n="form.course"></span> <input name="title" required /></label>
+              <label class="field"><span data-i18n="form.room"></span> <input name="room" placeholder="A6.301" /></label>
+              <label class="field"><span data-i18n="form.day"></span> <select name="day" id="day-select"></select></label>
+              <div class="row">
+                <label class="field"><span data-i18n="form.from"></span> <input name="start" type="time" required value="08:15" /></label>
+                <label class="field"><span data-i18n="form.to"></span> <input name="end" type="time" required value="09:45" /></label>
+              </div>
+              <button type="submit" class="btn btn-filled pressable" data-i18n="form.submit"></button>
+            </form>
+          </details>
+
+          <details class="card">
+            <summary data-i18n="ics.heading"></summary>
+            <p class="muted small" data-i18n="ics.help"></p>
+            <input id="ics-input" type="file" accept=".ics,text/calendar" />
+            <p id="ics-status" class="muted small" role="status"></p>
+          </details>
+        </div>
+      </section>
+
+      <!-- MENSA -->
+      <section id="view-mensa" class="view" data-i18n-aria="tab.mensa">
+        <div class="view-inner">
+          <div class="mensa-head">
+            <div>
+              <h1 class="headline" data-i18n="mensa.title"></h1>
+              <div id="mensa-status" class="status"></div>
+            </div>
+            <button id="mensa-map" class="btn btn-tonal pressable">
+              <svg class="icon" aria-hidden="true"><use href="icons/sprite.svg#map" /></svg>
+              <span data-i18n="mensa.showOnMap"></span>
+            </button>
+          </div>
+          <div class="mensa-controls">
+            <div id="mensa-days" class="filter-row" role="tablist"></div>
+            <div id="mensa-tags" class="filter-row" role="group" data-i18n-aria="mensa.filters"></div>
+            <label class="inline">
+              <span data-i18n="mensa.price"></span>
+              <select id="mensa-role" class="select"></select>
+            </label>
+          </div>
+          <div id="mensa-list" aria-live="polite"></div>
+          <div class="card pass-card">
+            <span class="lead"><svg class="icon" aria-hidden="true"><use href="icons/sprite.svg#wallet" /></svg></span>
+            <h2 class="title-m" data-i18n="mensapass.title"></h2>
+            <p class="small muted" data-i18n="mensapass.text"></p>
+            <div class="actions">
+              <a class="btn btn-tonal pressable" href="https://mensapass.stwm.de/" target="_blank" rel="noopener"
+                ><span data-i18n="mensapass.open"></span> <svg class="icon" aria-hidden="true"><use href="icons/sprite.svg#open_in_new" /></svg
+              ></a>
+            </div>
+          </div>
+          <details class="card" style="margin-top: 20px">
+            <summary data-i18n="mensa.myAllergens"></summary>
+            <p class="muted small" data-i18n="mensa.myAllergensHelp"></p>
+            <div id="allergen-picker" class="check-grid"></div>
+            <label class="setting"><span data-i18n="mensa.hideConflicts"></span><input id="hide-conflicts" class="switch" type="checkbox" role="switch" /></label>
+          </details>
+          <p class="footnote" data-i18n="mensa.source"></p>
+        </div>
+      </section>
+
+      <!-- CAMPUS -->
+      <section id="view-campus" class="view" data-i18n-aria="tab.campus">
+        <div class="view-inner">
+          <h1 class="headline page-title" data-i18n="campus.title"></h1>
+
+          <h2 class="section-title" data-i18n="campus.saved"></h2>
+          <ul id="saved-list" class="list"></ul>
+
+          <h2 id="categories-title" class="section-title" data-i18n="campus.categories"></h2>
+          <div id="categories"></div>
+
+          <h2 id="people-section" class="section-title" data-i18n="campus.people"></h2>
+          <p id="people-help" class="muted small" style="margin: 0 4px 10px"></p>
+          <div id="people-list"></div>
+
+          <h2 class="section-title" data-i18n="campus.contacts"></h2>
+          <ul id="contacts-list" class="list"></ul>
+          <details class="card" style="margin-top: 12px">
+            <summary data-i18n="contact.add"></summary>
+            <p class="muted small"><span data-i18n="contact.help"></span> <a id="directory-link" target="_blank" rel="noopener" data-i18n="contact.directory"></a></p>
+            <form id="contact-form" class="form">
+              <label class="field"><span data-i18n="contact.name"></span> <input name="name" required /></label>
+              <label class="field"><span data-i18n="contact.room"></span> <input name="room" required placeholder="D1.436" /></label>
+              <label class="field"><span data-i18n="contact.note"></span> <input name="note" /></label>
+              <button type="submit" class="btn btn-filled pressable" data-i18n="contact.submit"></button>
+            </form>
+          </details>
+
+          <h2 class="section-title" data-i18n="campus.buildings"></h2>
+          <details class="card">
+            <summary id="buildings-summary"></summary>
+            <ul id="buildings-list" class="list"></ul>
+          </details>
+
+          <h2 class="section-title" data-i18n="campus.settings"></h2>
+          <div class="card">
+            <label class="setting">
+              <span data-i18n="settings.travelMode"></span>
+              <select id="travel-mode-select" class="select"></select>
+            </label>
+            <label class="setting"><span data-i18n="settings.stepFree"></span><input id="avoid-stairs" class="switch" type="checkbox" role="switch" /></label>
+            <label class="setting">
+              <span data-i18n="settings.routeStyle"></span>
+              <select id="route-style-select" class="select"></select>
+            </label>
+            <label class="setting"><span data-i18n="settings.buffer"></span><input id="buffer-min" class="select" type="number" min="0" max="30" value="3" /></label>
+            <label class="setting">
+              <span data-i18n="settings.theme"></span>
+              <select id="theme-select" class="select">
+                <option value="auto" data-i18n="settings.theme.auto"></option>
+                <option value="light" data-i18n="settings.theme.light"></option>
+                <option value="dark" data-i18n="settings.theme.dark"></option>
+              </select>
+            </label>
+            <div class="setting"><button id="reset-welcome" class="btn btn-text pressable" type="button" data-i18n="settings.reset"></button></div>
+          </div>
+          <p id="about-data" class="footnote"></p>
+          <p class="footnote"><a href="https://github.com/yahyaozsoy/HSWTNavi" target="_blank" rel="noopener" data-i18n="about.source"></a></p>
+        </div>
+      </section>
+    </main>
+
+    <nav class="nav-bar glass" data-i18n-aria="nav.label">
+      <button class="nav-item pressable active" data-view="map" aria-current="page">
+        <span class="indicator"
+          ><svg class="icon icon-line" aria-hidden="true"><use href="icons/sprite.svg#map" /></svg
+          ><svg class="icon icon-fill" aria-hidden="true"><use href="icons/sprite.svg#map-fill" /></svg
+        ></span>
+        <span data-i18n="tab.map"></span>
+      </button>
+      <button class="nav-item pressable" data-view="today">
+        <span class="indicator"
+          ><svg class="icon icon-line" aria-hidden="true"><use href="icons/sprite.svg#event" /></svg
+          ><svg class="icon icon-fill" aria-hidden="true"><use href="icons/sprite.svg#event-fill" /></svg
+        ></span>
+        <span data-i18n="tab.today"></span>
+      </button>
+      <button class="nav-item pressable" data-view="mensa">
+        <span class="indicator"
+          ><svg class="icon icon-line" aria-hidden="true"><use href="icons/sprite.svg#restaurant" /></svg
+          ><svg class="icon icon-fill" aria-hidden="true"><use href="icons/sprite.svg#restaurant-fill" /></svg
+        ></span>
+        <span data-i18n="tab.mensa"></span>
+      </button>
+      <button class="nav-item pressable" data-view="campus">
+        <span class="indicator"
+          ><svg class="icon icon-line" aria-hidden="true"><use href="icons/sprite.svg#school" /></svg
+          ><svg class="icon icon-fill" aria-hidden="true"><use href="icons/sprite.svg#school-fill" /></svg
+        ></span>
+        <span data-i18n="tab.campus"></span>
+      </button>
+    </nav>
+
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+    <script type="module" src="js/app.js"></script>
+  </body>
+</html>

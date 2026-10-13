@@ -1,0 +1,10 @@
+// Cloudflare Workers static-assets config. The site has no build step: Cloudflare serves this
+// folder as it is. Build command: (leave empty) · Deploy command: npx wrangler deploy
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "hswt-navigator",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./"
+  }
+}
