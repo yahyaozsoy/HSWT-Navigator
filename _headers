@@ -4,7 +4,14 @@
 /sw.js
   Cache-Control: no-cache
 
+# Content-Security-Policy: scripts only from this site (no inline scripts, no eval), network access
+# only to the services the app uses, no framing (clickjacking). Inline style attributes stay allowed
+# because the UI sets a few through templates. Keep connect-src in sync with js/lib/* and js/app.js.
 /*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://tile.openstreetmap.org; connect-src 'self' https://tile.openstreetmap.org https://valhalla1.openstreetmap.de https://routing.openstreetmap.de https://api.transitous.org https://tum-dev.github.io https://raw.githubusercontent.com; font-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
+  X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
-  Permissions-Policy: geolocation=(self), camera=(), microphone=()
+  Permissions-Policy: geolocation=(self), camera=(), microphone=(), payment=(), usb=(), interest-cohort=()
+  Cross-Origin-Opener-Policy: same-origin
+  Strict-Transport-Security: max-age=31536000; includeSubDomains

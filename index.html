@@ -5,25 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f8fbe9" />
     <meta name="color-scheme" content="light dark" />
-    <script>
-      // Resolve the theme before first paint so dark mode doesn't flash white.
-      try {
-        const t = JSON.parse(localStorage.getItem('hswt.theme'));
-        const dark = t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
-        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-      } catch {}
-    </script>
+    <script src="js/theme.js"></script>
     <meta name="description" content="Räume, Büros, die Mensa und deine nächste Vorlesung an der HSWT finden." />
     <title>HSWT Navigator</title>
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
-    <link
-      rel="stylesheet"
-      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-      crossorigin=""
-    />
+    <link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
     <link rel="stylesheet" href="css/styles.css" />
   </head>
   <body>
@@ -157,7 +145,7 @@
             </button>
           </div>
           <div class="mensa-controls">
-            <div id="mensa-days" class="filter-row" role="tablist"></div>
+            <div id="mensa-days" class="filter-row" role="group" data-i18n-aria="mensa.days"></div>
             <div id="mensa-tags" class="filter-row" role="group" data-i18n-aria="mensa.filters"></div>
             <label class="inline">
               <span data-i18n="mensa.price"></span>
@@ -241,8 +229,23 @@
             </label>
             <div class="setting"><button id="reset-welcome" class="btn btn-text pressable" type="button" data-i18n="settings.reset"></button></div>
           </div>
+          <details id="privacy" class="card" style="margin-top: 20px">
+            <summary data-i18n="privacy.title"></summary>
+            <p class="small" data-i18n="privacy.local"></p>
+            <p class="small" data-i18n="privacy.location"></p>
+            <p class="small" data-i18n="privacy.services"></p>
+            <ul class="small privacy-list">
+              <li data-i18n="privacy.tiles"></li>
+              <li data-i18n="privacy.routing"></li>
+              <li data-i18n="privacy.transit"></li>
+              <li data-i18n="privacy.menu"></li>
+              <li data-i18n="privacy.hosting"></li>
+            </ul>
+            <p class="small" data-i18n="privacy.links"></p>
+            <div class="actions"><button id="delete-data" class="btn btn-outlined pressable" type="button" data-i18n="privacy.delete"></button></div>
+          </details>
           <p id="about-data" class="footnote"></p>
-          <p class="footnote"><a href="https://github.com/yahyaozsoy/HSWTNavi" target="_blank" rel="noopener" data-i18n="about.source"></a></p>
+          <p class="footnote"><a href="https://github.com/yahyaozsoy/HSWT-Navigator" target="_blank" rel="noopener" data-i18n="about.source"></a></p>
         </div>
       </section>
     </main>
@@ -278,11 +281,7 @@
       </button>
     </nav>
 
-    <script
-      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-      crossorigin=""
-    ></script>
+    <script src="vendor/leaflet/leaflet.js"></script>
     <script type="module" src="js/app.js"></script>
   </body>
 </html>

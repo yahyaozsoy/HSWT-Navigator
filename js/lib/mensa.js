@@ -4,6 +4,10 @@
 import { LABELS } from '../data/mensa-labels.js';
 
 export const EAT_API = 'https://tum-dev.github.io/eat-api';
+export const EAT_API_RAW = 'https://raw.githubusercontent.com/TUM-Dev/eat-api/gh-pages';
+// Our own menu API (worker/, same site): keeps every published day, also for canteens eat-api
+// doesn't cover. Same paths and format as eat-api.
+export const MENU_API = 'api/menus';
 export const ROLES = ['students', 'staff', 'guests'];
 
 // Filter tags derived from eat-api labels. eat-api (and the Studierendenwerk) publish no halal
@@ -26,9 +30,14 @@ export const TAGS = [
 const tagById = Object.fromEntries(TAGS.map((t) => [t.id, t]));
 const has = (dish, ...labels) => labels.some((l) => dish.labels.includes(l));
 
+// Badges that are only true if every allergen and ingredient is labelled.
+const FREE_FROM = ['halal', 'glutenfree', 'lactosefree'];
+
 // Tags shown as badges on a dish (the "free-from" ones only when they say something useful).
-export function dishTags(dish) {
-  const shown = ['vegan', 'vegetarian', 'halal', 'glutenfree', 'lactosefree', 'regional', 'msc'];
+// `completeLabels: false` (menus not labelled by the Studierendenwerk's own system) drops the
+// badges that are concluded from a missing label: a missing label must never read as "free from".
+export function dishTags(dish, { completeLabels = true } = {}) {
+  const shown = ['vegan', 'vegetarian', 'halal', 'glutenfree', 'lactosefree', 'regional', 'msc'].filter((id) => completeLabels || !FREE_FROM.includes(id));
   const tags = shown.filter((id) => tagById[id].test(dish));
   // "vegetarian" is implied by "vegan".
   return tags.includes('vegan') ? tags.filter((t) => t !== 'vegetarian') : tags;
@@ -47,10 +56,15 @@ export function isoWeek(date) {
   return { year: d.getUTCFullYear(), week: Math.ceil(((d - yearStart) / 86400000 + 1) / 7) };
 }
 
-// eat-api publishes the same menus with English dish names under /en/.
-export function menuUrl(canteenId, date, lang = 'de') {
+// eat-api (and our API) publish the same menus with English dish names under /en/.
+export function menuUrl(canteenId, date, lang = 'de', base = EAT_API) {
   const { year, week } = isoWeek(date);
-  return `${EAT_API}/${lang === 'en' ? 'en/' : ''}${canteenId}/${year}/${String(week).padStart(2, '0')}.json`;
+  return `${base}/${lang === 'en' ? 'en/' : ''}${canteenId}/${year}/${String(week).padStart(2, '0')}.json`;
+}
+
+// Where to look for a canteen's week, in order: our API first, then eat-api if it covers the canteen.
+export function menuSources(canteen, date, lang = 'de') {
+  return [MENU_API, ...(canteen.eatApi ? [EAT_API, EAT_API_RAW] : [])].map((base) => menuUrl(canteen.menu, date, lang, base));
 }
 
 // On weekends the useful menu is next week's.

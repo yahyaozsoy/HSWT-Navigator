@@ -68,6 +68,7 @@ const canteens = [
     latlng: [48.39959, 11.723147],
     hours: weekdays('11:00', '13:30'),
     menu: 'mensa-weihenstephan',
+    eatApi: true,
   },
   {
     id: 'stucafe-maximus',

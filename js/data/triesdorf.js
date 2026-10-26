@@ -56,6 +56,7 @@ const canteens = [
     latlng: mensateria,
     hours: weekdays('08:00', '16:00', '14:00'),
     note: { de: 'Mittagessen Mo–Fr 11:30–14:00', en: 'Lunch Mon–Fri 11:30–14:00' },
+    menu: 'mensateria-triesdorf', // stored by our menu API (worker/) when entered
     menuUrl: 'https://www.werkswelt.de/?id=trie',
     menuProvider: 'Studierendenwerk Erlangen-Nürnberg',
     url: 'https://www.werkswelt.de/?id=trie',

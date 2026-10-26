@@ -12,7 +12,7 @@ import { eventsOn, nextEvent, leaveBy, parseIcs, isoDate } from './lib/schedule.
 import { search } from './lib/search.js';
 import { createI18n, detectLanguage } from './lib/i18n.js';
 import {
-  menuUrl,
+  menuSources,
   menuWeekStart,
   daysOf,
   formatPrice,
@@ -22,7 +22,6 @@ import {
   groupByType,
   ROLES,
   TAGS,
-  EAT_API,
 } from './lib/mensa.js';
 
 // Walking/cycling routes from further away start at the campus's station (transit plans from anywhere).
@@ -55,27 +54,40 @@ const store = {
 
 const tagById = Object.fromEntries(TAGS.map((tag) => [tag.id, tag]));
 
+// Stored lists may be missing or damaged (old versions, manual edits): fall back to empty ones.
+const storedList = (key) => {
+  const v = store.get(key, []);
+  return Array.isArray(v) ? v.filter((x) => x && typeof x === 'object') : [];
+};
+
 // Mensa filter tags; older versions stored a single diet ("vegan", "vegetarian", "nopork").
 function initialTags() {
   const tags = store.get('mensaTags', null);
-  if (Array.isArray(tags)) return tags.filter((id) => tagById[id]);
+  if (Array.isArray(tags)) return tags.filter((id) => Object.hasOwn(tagById, id));
   const diet = store.get('mensaDiet', 'all');
-  return tagById[diet] ? [diet] : [];
+  return Object.hasOwn(tagById, diet) ? [diet] : [];
 }
 
 const state = {
   campus: getCampus(store.get('campus', CAMPUSES[0].id)),
-  classes: store.get('classes', []),
-  contacts: store.get('contacts', []),
-  saved: store.get('saved', []), // [{ key, placeId, roomCode, personId }]
-  recent: store.get('recent', []),
+  classes: storedList('classes'),
+  contacts: storedList('contacts'),
+  saved: storedList('saved'), // [{ key, placeId, roomCode, personId }]
+  recent: storedList('recent'),
   avoidStairs: store.get('avoidStairs', false),
   routeStyle: ROUTE_STYLES.includes(store.get('routeStyle', 'fast')) ? store.get('routeStyle', 'fast') : 'fast',
   travelMode: TRAVEL_MODES.includes(store.get('travelMode', 'walk')) ? store.get('travelMode', 'walk') : 'walk',
   theme: store.get('theme', 'auto'), // 'auto' | 'light' | 'dark'
-  bufferMin: store.get('bufferMin', 3),
+  bufferMin: Math.min(30, Math.max(0, Number(store.get('bufferMin', 3)) || 0)),
   lang: detectLanguage(store.get('lang', null), navigator.languages ?? [navigator.language]),
-  mensa: { role: store.get('mensaRole', 'students'), tags: initialTags(), avoid: store.get('allergens', []), hide: store.get('hideConflicts', false), week: 0, day: null },
+  mensa: {
+    role: ROLES.includes(store.get('mensaRole')) ? store.get('mensaRole') : 'students',
+    tags: initialTags(),
+    avoid: [store.get('allergens', [])].flat().filter((k) => Object.hasOwn(ALLERGEN_FAMILIES, k)),
+    hide: store.get('hideConflicts', false) === true,
+    week: 0,
+    day: null,
+  },
   campusCategory: null, // open category on the Campus tab
   me: null, // [lat, lng] from geolocation
   selected: null, // { placeId, room, personId, routed }
@@ -238,6 +250,7 @@ function initMap() {
   L.control.zoom({ position: 'topright' }).addTo(map);
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
+    crossOrigin: true, // CORS responses can be cached by the service worker (opaque ones can't)
     attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · Lageplan © HSWT',
   }).addTo(map);
   shapeLayer = L.layerGroup().addTo(map);
@@ -591,7 +604,7 @@ function selectPlace(placeId, { room = null, personId = null, route = false, kee
   sheet.querySelectorAll('[data-open-place]').forEach((b) => b.addEventListener('click', () => selectPlace(b.dataset.openPlace)));
   sheet.querySelectorAll('[data-open-person]').forEach((b) => b.addEventListener('click', () => openPerson(b.dataset.openPerson)));
   if (route) drawRoute(p, $('#route-from').value);
-  if (p.menu) renderMenuPreview(p.menu);
+  if (p.menu) renderMenuPreview(p);
   if (p.kind === 'transit') {
     loadDepartures(p);
     departuresTimer = setInterval(() => document.visibilityState === 'visible' && loadDepartures(p), 60000);
@@ -1194,6 +1207,20 @@ $('#welcome-ok').addEventListener('click', () => {
   store.set('welcomeSeen', true);
   input.focus();
 });
+// Everything the app stores lives in this browser; this removes all of it (GDPR: erasure).
+$('#delete-data').addEventListener('click', async () => {
+  if (!confirm(t('privacy.deleteConfirm'))) return;
+  try {
+    Object.keys(localStorage)
+      .filter((k) => k.startsWith('hswt.'))
+      .forEach((k) => localStorage.removeItem(k));
+    await Promise.all((await caches.keys()).map((k) => caches.delete(k)));
+  } catch {
+    /* storage unavailable – nothing stored */
+  }
+  location.reload();
+});
+
 $('#reset-welcome').addEventListener('click', () => {
   showView('map');
   closeSheet();
@@ -1373,30 +1400,55 @@ $('#search-clear').addEventListener('click', () => {
 // ---------- Mensa ----------
 
 const menuCache = new Map();
-// GitHub Pages first; the raw gh-pages branch is a fallback for networks that block github.io.
+const MENU_TIMEOUT_MS = 10000;
 // English dish names when the app is in English; the German menu if no translation is available.
-function loadWeek(canteenId, date) {
-  if (i18n.lang !== 'de') return loadWeekIn(canteenId, date, 'en').then((w) => w ?? loadWeekIn(canteenId, date, 'de'), () => loadWeekIn(canteenId, date, 'de'));
-  return loadWeekIn(canteenId, date, 'de');
+function loadWeek(canteen, date) {
+  if (i18n.lang !== 'de') return loadWeekIn(canteen, date, 'en').then((w) => w ?? loadWeekIn(canteen, date, 'de'), () => loadWeekIn(canteen, date, 'de'));
+  return loadWeekIn(canteen, date, 'de');
 }
 
-function loadWeekIn(canteenId, date, lang) {
-  const url = menuUrl(canteenId, date, lang);
-  if (!menuCache.has(url)) {
-    const get = (u) => fetch(u).then((r) => (r.ok ? r.json() : r.status === 404 ? null : Promise.reject(new Error(`HTTP ${r.status}`))));
-    const raw = url.replace(EAT_API, 'https://raw.githubusercontent.com/TUM-Dev/eat-api/gh-pages');
-    const p = get(url).catch(() => get(raw));
-    p.catch(() => menuCache.delete(url));
-    menuCache.set(url, p);
+// Tries our menu API, then eat-api, then eat-api's raw GitHub branch (for networks that block
+// github.io). Resolves to null when no source has the week, rejects when none could be reached.
+function loadWeekIn(canteen, date, lang) {
+  const urls = menuSources(canteen, date, lang);
+  const key = urls[0];
+  if (!menuCache.has(key)) {
+    const get = (u) =>
+      fetch(u, { signal: AbortSignal.timeout?.(MENU_TIMEOUT_MS) }).then((r) =>
+        r.ok ? r.json() : r.status === 404 ? null : Promise.reject(new Error(`HTTP ${r.status}`)),
+      );
+    const p = (async () => {
+      // A 404 (our API hasn't stored the week) or an error moves on to the next source.
+      let answered = false;
+      let error = null;
+      for (const url of urls) {
+        try {
+          const week = await get(url);
+          if (week) return week;
+          answered = true;
+        } catch (e) {
+          error = e;
+        }
+      }
+      if (answered) return null;
+      throw error;
+    })();
+    p.catch(() => menuCache.delete(key));
+    menuCache.set(key, p);
   }
-  return menuCache.get(url);
+  return menuCache.get(key);
 }
+
+// For canteens without a stored menu: the operator's own menu page.
+const externalMenuHtml = (place) => `<div class="card"><p>${esc(t('mensa.external', { name: i18n.pick(place.name), provider: place.menuProvider }))}</p>
+  ${i18n.pick(place.note) ? `<p class="small muted">${esc(i18n.pick(place.note))}</p>` : ''}
+  <div class="actions"><a class="btn btn-filled pressable" href="${esc(place.menuUrl)}" target="_blank" rel="noopener">${esc(t('mensa.openExternal'))} ${svg('open_in_new')}</a></div></div>`;
 
 const mensaPlace = () => placeById('mensa');
 const labelNames = (keys) => keys.map((k) => i18n.pick(LABELS[k])).filter(Boolean);
 
 function dishBadges(dish) {
-  const badges = dishTags(dish).map((id) => `<span class="tag">${svg(tagById[id].icon)}${esc(t(`mensa.tag.${id}`))}</span>`);
+  const badges = dishTags(dish, { completeLabels: Boolean(mensaPlace().eatApi) }).map((id) => `<span class="tag">${svg(tagById[id].icon)}${esc(t(`mensa.tag.${id}`))}</span>`);
   // Meat and fish dishes name what's in them ("Schwein", "Rind", …).
   if (dish.meat.length && !['vegan', 'vegetarian'].includes(dish.diet)) badges.push(`<span class="tag meat">${esc(labelNames(dish.meat).join(' · '))}</span>`);
   return badges.join('');
@@ -1421,21 +1473,27 @@ function dishCard(dish) {
   </li>`;
 }
 
+let mensaRender = 0;
 async function renderMensa() {
+  const render = ++mensaRender;
   const m = state.mensa;
   const place = mensaPlace();
   const status = openingStatus(place.hours);
   $('#mensa-status').className = `status ${statusClass(status)}`;
   $('#mensa-status').textContent = `${i18n.pick(place.name)} · ${i18n.openingStatus(status)}`;
   $('.pass-card').hidden = !state.campus.mensaPass;
+  const showMenu = (on) => {
+    $('#mensa-tags').hidden = !on;
+    $('#mensa-role').closest('label').hidden = !on;
+    $('#allergen-settings').hidden = !on;
+    $('#mensa-source').hidden = !on;
+  };
+  $('#mensa-source').textContent = place.eatApi ? t('mensa.source') : t('mensa.sourceOwn', { provider: place.menuProvider });
+  showMenu(Boolean(place.menu));
   $('.mensa-controls').hidden = !place.menu;
-  $('#allergen-settings').hidden = !place.menu;
-  $('#mensa-source').hidden = !place.menu;
   if (!place.menu) {
-    // No machine-readable menu for this canteen: point to the operator's menu page.
-    $('#mensa-list').innerHTML = `<div class="card"><p>${esc(t('mensa.external', { name: i18n.pick(place.name), provider: place.menuProvider }))}</p>
-      ${i18n.pick(place.note) ? `<p class="small muted">${esc(i18n.pick(place.note))}</p>` : ''}
-      <div class="actions"><a class="btn btn-filled pressable" href="${esc(place.menuUrl)}" target="_blank" rel="noopener">${esc(t('mensa.openExternal'))} ${svg('open_in_new')}</a></div></div>`;
+    // No menu data for this canteen at all: point to the operator's menu page.
+    $('#mensa-list').innerHTML = externalMenuHtml(place);
     return;
   }
   $('#mensa-tags').innerHTML =
@@ -1457,9 +1515,19 @@ async function renderMensa() {
   list.innerHTML = `<p class="muted">${esc(t('mensa.loading'))}</p>`;
   let week;
   try {
-    week = await loadWeek(place.menu, start);
+    week = await loadWeek(place, start);
   } catch {
-    list.innerHTML = `<p class="muted">${esc(t('mensa.error'))}</p>`;
+    if (render === mensaRender) list.innerHTML = `<p class="muted">${esc(t('mensa.error'))}</p>`;
+    return;
+  }
+  // A newer render (language, campus or week changed while loading) owns the list now.
+  if (render !== mensaRender) return;
+  const weekToggle = `<button class="btn btn-text pressable" data-week="${m.week ? 0 : 1}">${esc(t(m.week ? 'mensa.thisWeek' : 'mensa.nextWeek'))} ${svg('chevron_right', m.week ? 'sm flip' : 'sm')}</button>`;
+  if (!week && place.menuUrl) {
+    // Nothing stored for this week: keep the week switch and point to the operator's page.
+    showMenu(false);
+    $('#mensa-days').innerHTML = weekToggle;
+    list.innerHTML = externalMenuHtml(place);
     return;
   }
   const days = daysOf(week);
@@ -1469,11 +1537,9 @@ async function renderMensa() {
   const tabs = days.map((d) => {
     const date = new Date(`${d.date}T12:00`);
     const label = `${i18n.weekday(date.getDay(), true)} ${i18n.shortDate(date)}${d.date === todayIso ? ` · ${t('mensa.today')}` : ''}`;
-    return `<button class="filter-chip pressable" role="tab" data-day="${d.date}" aria-selected="${d.date === m.day}">${esc(label)}</button>`;
+    return `<button type="button" class="filter-chip pressable" data-day="${esc(d.date)}" aria-pressed="${d.date === m.day}">${esc(label)}</button>`;
   });
-  tabs.push(
-    `<button class="btn btn-text pressable" data-week="${m.week ? 0 : 1}">${esc(t(m.week ? 'mensa.thisWeek' : 'mensa.nextWeek'))} ${svg('chevron_right', m.week ? 'sm flip' : 'sm')}</button>`,
-  );
+  tabs.push(weekToggle);
   $('#mensa-days').innerHTML = tabs.join('');
 
   const day = days.find((d) => d.date === m.day);
@@ -1482,10 +1548,10 @@ async function renderMensa() {
     return;
   }
   const visible = day.dishes.filter((d) => matchesTags(d, m.tags) && !(m.hide && conflicts(d, m.avoid).length));
-  const halalShown = m.tags.includes('halal') || visible.some((d) => dishTags(d).includes('halal'));
+  const halalShown = m.tags.includes('halal') || visible.some((d) => dishTags(d, { completeLabels: Boolean(place.eatApi) }).includes('halal'));
   list.innerHTML = visible.length
     ? groupByType(visible)
-        .map((g) => `<h3 class="dish-type">${esc(g.type)}</h3><ul class="dishes">${g.dishes.map(dishCard).join('')}</ul>`)
+        .map((g) => `<h2 class="dish-type">${esc(g.type)}</h2><ul class="dishes">${g.dishes.map(dishCard).join('')}</ul>`)
         .join('') + (halalShown ? `<p class="footnote">${esc(t('mensa.halalNote'))}</p>` : '')
     : `<p class="muted">${esc(t('mensa.noMatch'))}</p>`;
 }
@@ -1527,20 +1593,23 @@ $('#hide-conflicts').addEventListener('change', (e) => {
 });
 $('#mensa-map').addEventListener('click', () => selectPlace('mensa'));
 
-async function todaysDishes() {
-  const place = mensaPlace();
-  if (!place.menu) return null;
+async function todaysDishes(place = mensaPlace()) {
+  if (!place?.menu) return null;
   try {
-    return daysOf(await loadWeek(place.menu, new Date())).find((d) => d.date === isoDate(new Date()))?.dishes ?? [];
+    return daysOf(await loadWeek(place, new Date())).find((d) => d.date === isoDate(new Date()))?.dishes ?? [];
   } catch {
     return null;
   }
 }
 
-async function renderMenuPreview() {
-  const dishes = await todaysDishes();
+async function renderMenuPreview(place) {
+  const dishes = await todaysDishes(place);
   const el = $('#menu-preview');
   if (!el) return;
+  if (!dishes?.length && place.menuUrl) {
+    el.innerHTML = `<a href="${esc(place.menuUrl)}" target="_blank" rel="noopener">${esc(t('mensa.openExternal'))} ${svg('open_in_new', 'sm')}</a>`;
+    return;
+  }
   if (!dishes) return (el.textContent = t('mensa.error'));
   if (!dishes.length) return (el.textContent = t('sheet.menuNone'));
   el.classList.remove('muted');
@@ -1705,10 +1774,17 @@ $('#class-form').addEventListener('submit', (e) => {
   renderToday();
 });
 
+// A semester timetable is a few KB; the limits keep a wrong file from freezing the app or filling storage.
+const MAX_ICS_BYTES = 2 * 1024 * 1024;
+const MAX_CLASSES = 500;
 $('#ics-input').addEventListener('change', async (e) => {
   const file = e.target.files?.[0];
   if (!file) return;
-  const imported = parseIcs(await file.text());
+  if (file.size > MAX_ICS_BYTES) {
+    e.target.value = '';
+    return ($('#ics-status').textContent = t('ics.tooLarge'));
+  }
+  const imported = parseIcs(await file.text()).slice(0, MAX_CLASSES);
   const ids = new Set(imported.map((c) => c.id));
   state.classes = [...state.classes.filter((c) => !ids.has(c.id)), ...imported];
   store.set('classes', state.classes);
@@ -1874,7 +1950,12 @@ campusSelect.addEventListener('change', () => {
 initMap();
 applyTheme();
 applyLanguage();
-locate({ quiet: true });
+// Show the position at start only if the user already allowed it; otherwise the browser asks
+// when they tap "my location" or start a route, not unprompted on page load.
+navigator.permissions
+  ?.query({ name: 'geolocation' })
+  .then((p) => p.state === 'granted' && locate({ quiet: true }))
+  .catch(() => {});
 setInterval(() => {
   if ($('#view-today').classList.contains('active')) renderToday();
 }, 30000);

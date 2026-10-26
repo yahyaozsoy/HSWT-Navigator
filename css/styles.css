@@ -1688,6 +1688,14 @@ details.card[open] > summary {
 .dish-details div {
   margin-top: 4px;
 }
+.privacy-list {
+  margin: 0 0 12px;
+  padding-left: 20px;
+}
+.privacy-list li + li {
+  margin-top: 4px;
+}
+
 .footnote {
   margin: 10px 4px 0;
   font-size: 0.8125rem;
