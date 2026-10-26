@@ -47,9 +47,10 @@ export function isoWeek(date) {
   return { year: d.getUTCFullYear(), week: Math.ceil(((d - yearStart) / 86400000 + 1) / 7) };
 }
 
-export function menuUrl(canteenId, date) {
+// eat-api publishes the same menus with English dish names under /en/.
+export function menuUrl(canteenId, date, lang = 'de') {
   const { year, week } = isoWeek(date);
-  return `${EAT_API}/${canteenId}/${year}/${String(week).padStart(2, '0')}.json`;
+  return `${EAT_API}/${lang === 'en' ? 'en/' : ''}${canteenId}/${year}/${String(week).padStart(2, '0')}.json`;
 }
 
 // On weekends the useful menu is next week's.

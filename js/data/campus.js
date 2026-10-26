@@ -1,4 +1,4 @@
-// Campus data for HSWT Navigator.
+// Campus data for HSWT Navigator: Weihenstephan here, Triesdorf in triesdorf.js.
 //
 // Geometry (footprints, positions, bus stops, car parks) comes from the official HSWT site plan,
 // snapped to OpenStreetMap footprints (weihenstephan.generated.js). Offices, people and addresses come from www.hswt.de (hswt.js).
@@ -9,6 +9,7 @@ import geo from './weihenstephan.generated.js';
 import { ADDRESSES, FACULTIES, PEOPLE, SERVICES } from './hswt.js';
 import scrapedPeople from './people.generated.js';
 import mobility from './mobility.generated.js';
+import triesdorf from './triesdorf.js';
 
 const weekdays = (open, close, friClose = close) => ({
   1: [[open, close]],
@@ -152,6 +153,7 @@ const stops = geo.stops.map((s, i) => ({
   kind: 'transit',
   category: 'transit',
   listed: s.modes.includes('regional_rail') || nearCampus(s.latlng),
+  rail: s.modes.includes('regional_rail'),
   name: s.name === 'Freising' ? 'Freising Bahnhof' : s.name,
   timetableName: s.name, // as in the DELFI timetable (used to match live departures)
   description: s.modes.includes('regional_rail')
@@ -196,8 +198,11 @@ const bikeRental = mobility.bikeRental
 // Curated people (hswt.js) plus everyone from the directory data who isn't curated yet.
 const personKey = (name) => name.replace(/^(Prof\.|Dr\.|-Ing\.|habil\.|\s)+/g, '').toLowerCase();
 const curated = new Set(PEOPLE.map((p) => personKey(p.name)));
+// hswt.de sometimes has two profile addresses for one person (/olaf-schroth and
+// /person/olaf-gerhard-schroth), so the scraped list is de-duplicated by name too.
+const scrapedSeen = new Set(curated);
 const scraped = scrapedPeople
-  .filter((p) => p.room && !curated.has(personKey(p.name)))
+  .filter((p) => p.room && !scrapedSeen.has(personKey(p.name)) && scrapedSeen.add(personKey(p.name)))
   .map((p) => ({
     name: p.name,
     faculty: p.faculty,
@@ -217,9 +222,14 @@ export const CAMPUSES = [
     id: 'weihenstephan',
     name: 'Weihenstephan',
     city: 'Freising',
+    town: 'Freising',
     center: [48.3985, 11.7265],
     zoom: 16,
     station: stops.find((s) => s.name === 'Freising Bahnhof')?.latlng ?? [48.395252, 11.744187],
+    stationName: { de: 'Bahnhof Freising', en: 'Freising station' },
+    journeyPlanner: { name: { de: 'MVV-Fahrplanauskunft', en: 'MVV journey planner' }, url: 'https://www.mvv-muenchen.de/' },
+    mensaPass: true,
+    roomExample: 'A6.301',
     georeference: geo.georeference,
     buildings,
     pois: [...canteens, ...services, ...study, ...community, ...residences, ...stops, ...bikeRental],
@@ -228,6 +238,7 @@ export const CAMPUSES = [
     unlabeledFootprints: geo.unlabeledFootprints,
     parking: geo.parking,
   },
+  triesdorf,
 ];
 
 export function getCampus(id) {

@@ -1,6 +1,6 @@
 # HSWT Navigator
 
-A campus app for the Weihenstephan campus of Hochschule Weihenstephan-Triesdorf (Freising). Find rooms,
+A campus app for the Weihenstephan (Freising) and Triesdorf campuses of Hochschule Weihenstephan-Triesdorf. Find rooms,
 offices and the Mensa, get walking, cycling or bus directions with live navigation, and see when you need
 to leave for your next class. German and English.
 
@@ -48,7 +48,7 @@ files.
 | Map, building outlines, bike parking | © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors (via [Overture Maps](https://overturemaps.org)) |
 | Building codes | Official HSWT site plan (*Lageplan Weihenstephan*) |
 | Offices, opening hours, lecturers | Public pages on [hswt.de](https://www.hswt.de) |
-| Mensa menu | Studierendenwerk München Oberbayern via [eat-api](https://github.com/TUM-Dev/eat-api) |
+| Mensa menu | Studierendenwerk München Oberbayern via [eat-api](https://github.com/TUM-Dev/eat-api) (German/English); Triesdorf links to the Studierendenwerk Erlangen-Nürnberg |
 | Walking and cycling routes | [FOSSGIS](https://www.fossgis.de) Valhalla and OSRM |
 | Bus and train | [Transitous](https://transitous.org) (DELFI/MVV timetables) |
 | Icons | [Material Symbols](https://fonts.google.com/icons) (Apache 2.0, see `icons/LICENSE-material-symbols.txt`) |

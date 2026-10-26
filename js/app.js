@@ -25,11 +25,10 @@ import {
   EAT_API,
 } from './lib/mensa.js';
 
-// Walking/cycling routes from further away start at Freising station (transit plans from anywhere).
+// Walking/cycling routes from further away start at the campus's station (transit plans from anywhere).
 const FAR_AWAY_M = { walk: 5000, bike: 25000 };
 const TRAVEL_MODES = ['walk', 'bike', 'transit'];
 const MODE_ICON = { walk: 'directions_walk', bike: 'directions_bike', transit: 'directions_bus' };
-const MVV_URL = 'https://www.mvv-muenchen.de/';
 const NEAR_PLACE_RADIUS_M = 150;
 const MAX_RECENT = 6;
 const SPRITE = 'icons/sprite.svg';
@@ -111,7 +110,8 @@ function toast(msg) {
 function placeIcon(p) {
   if (p.kind === 'bikeshare') return 'electric_bike';
   if (p.id?.startsWith('stucafe')) return 'coffee';
-  if (p.kind === 'transit') return p.name === 'Freising Bahnhof' ? 'train' : 'directions_bus';
+  if (p.kind === 'transit') return p.rail ? 'train' : 'directions_bus';
+  if (p.kind === 'landmark') return 'location_on';
   if (p.kind === 'community') return 'church';
   if (p.kind === 'building') return 'apartment';
   return categoryById[p.category]?.icon ?? 'location_on';
@@ -122,8 +122,11 @@ function placeIcon(p) {
 function applyLanguage() {
   i18n = createI18n(state.lang);
   document.documentElement.lang = state.lang;
-  document.querySelectorAll('[data-i18n]').forEach((el) => (el.textContent = t(el.dataset.i18n)));
-  document.querySelectorAll('[data-i18n-placeholder]').forEach((el) => (el.placeholder = t(el.dataset.i18nPlaceholder)));
+  // Room examples follow the campus ("A6.301" in Weihenstephan, "A.004" in Triesdorf).
+  const example = { room: state.campus.roomExample };
+  document.querySelectorAll('[data-i18n]').forEach((el) => (el.textContent = t(el.dataset.i18n, example)));
+  document.querySelectorAll('[data-i18n-placeholder]').forEach((el) => (el.placeholder = t(el.dataset.i18nPlaceholder, example)));
+  document.querySelectorAll('input[name="room"]').forEach((el) => (el.placeholder = state.campus.roomExample));
   document.querySelectorAll('[data-i18n-aria]').forEach((el) => el.setAttribute('aria-label', t(el.dataset.i18nAria)));
   document.querySelectorAll('[data-i18n-title]').forEach((el) => (el.title = t(el.dataset.i18nTitle)));
   document.querySelectorAll('[data-lang]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.lang === state.lang)));
@@ -136,7 +139,10 @@ function applyLanguage() {
   $('#travel-mode-select').innerHTML = TRAVEL_MODES.map((m) => `<option value="${m}">${esc(t(`mode.${m}`))}</option>`).join('');
   $('#travel-mode-select').value = state.travelMode;
   $('#about-data').textContent = t('about.data', { date: i18n.shortDate(new Date(RETRIEVED)) });
-  $('#people-help').textContent = t('campus.peopleHelp', { date: i18n.shortDate(new Date(RETRIEVED)) });
+  $('#people-help').textContent = state.campus.people.length
+    ? t('campus.peopleHelp', { date: i18n.shortDate(new Date(RETRIEVED)) })
+    : t('campus.peopleNone', { campus: state.campus.name });
+  $('#campus-title').textContent = t('campus.title', { name: state.campus.name });
   $('#directory-link').href = PERSON_DIRECTORY_URL;
 
   renderChips();
@@ -216,6 +222,7 @@ const markers = new Map();
 const SHAPES = {
   building: { fill: '#7ab800', line: '#568400' }, // HSWT house colour (Pantone 376); dimmed in dark mode via CSS tokens
   study: { fill: '#6f95d3', line: '#2f5fa8' },
+  landmark: { fill: '#b8b8b5', line: '#7c7c79' }, // neighbours on the site plan that aren't HSWT
   residence: { fill: '#d39aa4', line: '#8f3f52' },
   community: { fill: '#d39aa4', line: '#8f3f52' },
 };
@@ -329,7 +336,7 @@ function highlightMarker(id) {
 
 function originOptionsHtml(excludeId, selected) {
   const opt = (value, label) => `<option value="${esc(value)}" ${value === selected ? 'selected' : ''}>${esc(label)}</option>`;
-  const start = [state.me ? opt('me', t('route.myLocation')) : '', opt('station', t('route.station'))].join('');
+  const start = [state.me ? opt('me', t('route.myLocation')) : '', opt('station', i18n.pick(state.campus.stationName))].join('');
   const buildings = state.campus.buildings.filter((b) => b.id !== excludeId).map((b) => opt(`place:${b.id}`, i18n.pick(b.name)));
   const other = state.campus.pois
     .filter((p) => p.id !== excludeId && ['food', 'study', 'living'].includes(p.category))
@@ -342,7 +349,7 @@ function originOptionsHtml(excludeId, selected) {
 function resolveOrigin(value, mode = 'walk') {
   if (value === 'me' && state.me) {
     if (FAR_AWAY_M[mode] && distanceMeters(state.me, state.campus.center) > FAR_AWAY_M[mode]) {
-      return { latlng: state.campus.station, key: 'station', note: t('route.farAway') };
+      return { latlng: state.campus.station, key: 'station', note: t('route.farAway', { town: state.campus.town, station: i18n.pick(state.campus.stationName) }) };
     }
     return { latlng: state.me, key: `me:${state.me.map((v) => v.toFixed(3)).join(',')}` };
   }
@@ -626,7 +633,8 @@ const routeStyleToggle = (mode) =>
   ).join('')}</div>`;
 
 const panelTop = (mode) => modeToggle() + (mode === 'transit' ? '' : routeStyleToggle(mode));
-const mvvLink = () => `<a href="${MVV_URL}" target="_blank" rel="noopener">${esc(t('transit.mvv'))} ${svg('open_in_new', 'sm')}</a>`;
+const mvvLink = () =>
+  `<a href="${esc(state.campus.journeyPlanner.url)}" target="_blank" rel="noopener">${esc(i18n.pick(state.campus.journeyPlanner.name))} ${svg('open_in_new', 'sm')}</a>`;
 
 async function drawRoute(place, originValue) {
   const id = ++routeRequest;
@@ -1259,7 +1267,7 @@ function runSearch() {
   if (!q.trim()) return showSuggestions();
   results = search(q, { campus: state.campus, places: places(), classes: state.classes, contacts: state.contacts, i18n });
   activeIdx = results.length ? 0 : -1;
-  renderResults(results.length ? '' : `<li class="empty">${esc(t('search.none'))}</li>`);
+  renderResults(results.length ? '' : `<li class="empty">${esc(t('search.none', { room: state.campus.roomExample }))}</li>`);
 }
 
 // A whole category as a result list ("Bibliotheken": HSWT and TUM library side by side).
@@ -1366,8 +1374,14 @@ $('#search-clear').addEventListener('click', () => {
 
 const menuCache = new Map();
 // GitHub Pages first; the raw gh-pages branch is a fallback for networks that block github.io.
+// English dish names when the app is in English; the German menu if no translation is available.
 function loadWeek(canteenId, date) {
-  const url = menuUrl(canteenId, date);
+  if (i18n.lang !== 'de') return loadWeekIn(canteenId, date, 'en').then((w) => w ?? loadWeekIn(canteenId, date, 'de'), () => loadWeekIn(canteenId, date, 'de'));
+  return loadWeekIn(canteenId, date, 'de');
+}
+
+function loadWeekIn(canteenId, date, lang) {
+  const url = menuUrl(canteenId, date, lang);
   if (!menuCache.has(url)) {
     const get = (u) => fetch(u).then((r) => (r.ok ? r.json() : r.status === 404 ? null : Promise.reject(new Error(`HTTP ${r.status}`))));
     const raw = url.replace(EAT_API, 'https://raw.githubusercontent.com/TUM-Dev/eat-api/gh-pages');
@@ -1412,7 +1426,18 @@ async function renderMensa() {
   const place = mensaPlace();
   const status = openingStatus(place.hours);
   $('#mensa-status').className = `status ${statusClass(status)}`;
-  $('#mensa-status').textContent = `${place.name} · ${i18n.openingStatus(status)}`;
+  $('#mensa-status').textContent = `${i18n.pick(place.name)} · ${i18n.openingStatus(status)}`;
+  $('.pass-card').hidden = !state.campus.mensaPass;
+  $('.mensa-controls').hidden = !place.menu;
+  $('#allergen-settings').hidden = !place.menu;
+  $('#mensa-source').hidden = !place.menu;
+  if (!place.menu) {
+    // No machine-readable menu for this canteen: point to the operator's menu page.
+    $('#mensa-list').innerHTML = `<div class="card"><p>${esc(t('mensa.external', { name: i18n.pick(place.name), provider: place.menuProvider }))}</p>
+      ${i18n.pick(place.note) ? `<p class="small muted">${esc(i18n.pick(place.note))}</p>` : ''}
+      <div class="actions"><a class="btn btn-filled pressable" href="${esc(place.menuUrl)}" target="_blank" rel="noopener">${esc(t('mensa.openExternal'))} ${svg('open_in_new')}</a></div></div>`;
+    return;
+  }
   $('#mensa-tags').innerHTML =
     `<button type="button" class="filter-chip pressable" data-tag="" aria-pressed="${m.tags.length === 0}">${esc(t('mensa.tag.all'))}</button>` +
     TAGS.map((tag) => {
@@ -1504,6 +1529,7 @@ $('#mensa-map').addEventListener('click', () => selectPlace('mensa'));
 
 async function todaysDishes() {
   const place = mensaPlace();
+  if (!place.menu) return null;
   try {
     return daysOf(await loadWeek(place.menu, new Date())).find((d) => d.date === isoDate(new Date()))?.dishes ?? [];
   } catch {
@@ -1635,6 +1661,7 @@ function renderToday() {
 let lunchShownFor = null;
 async function renderLunch(now) {
   const card = $('#lunch-card');
+  if (!mensaPlace().menu) return (card.hidden = true);
   const status = openingStatus(mensaPlace().hours, now);
   const before = status.open || (status.opensIn === 0 && status.opensAt);
   if (!before) return (card.hidden = true);
@@ -1771,7 +1798,7 @@ function renderCampus() {
       listButton(`data-place="${esc(b.id)}"`, {
         lead: esc(b.id),
         title: i18n.pick(b.subtitle) || i18n.pick(b.name),
-        sub: b.address ? b.address.replace(', 85354 Freising', '') : '',
+        sub: b.address ? b.address.split(',')[0] : '',
       }),
     )
     .join('');
@@ -1796,7 +1823,7 @@ $('#contact-form').addEventListener('submit', (e) => {
   const roomInput = f.get('room').trim();
   const loc = locateRoom(roomInput, state.campus);
   const building = loc?.buildingRef ?? locateBuilding(roomInput, state.campus);
-  if (!building) return toast(t('contact.badRoom', { room: roomInput }));
+  if (!building) return toast(t('contact.badRoom', { room: roomInput, example: state.campus.roomExample }));
   // Store the official spelling ("d1 436" → "D1.436") so it matches the profile pages.
   const contact = { id: `contact-${Date.now()}`, name: f.get('name').trim(), room: loc?.code ?? building.id, note: f.get('note').trim() };
   state.contacts.push(contact);
@@ -1833,6 +1860,8 @@ campusSelect.value = state.campus.id;
 campusSelect.addEventListener('change', () => {
   state.campus = getCampus(campusSelect.value);
   store.set('campus', state.campus.id);
+  state.mensa.day = null;
+  lunchShownFor = null;
   closeSheet();
   input.value = '';
   hideResults();
