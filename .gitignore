@@ -6,3 +6,4 @@ __pycache__/
 .wrangler/
 www/
 *.har
+.dev.vars

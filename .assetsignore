@@ -17,3 +17,11 @@ android
 ios
 capacitor.config.json
 db
+source_material
+README.standalone.md
+worker
+.dev.vars
+.env*
+.gitignore
+.assetsignore
+*.md

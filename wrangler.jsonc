@@ -1,10 +1,27 @@
-// Cloudflare Workers static-assets config. The site has no build step: Cloudflare serves this
-// folder as it is. Build command: (leave empty) · Deploy command: npx wrangler deploy
+// Cloudflare Workers config. The site has no build step: Cloudflare serves this folder as static
+// assets, and the Worker in worker/index.js only answers /api/* (the menu API, stored in D1).
+// Build command: (leave empty) · Deploy command: npx wrangler deploy
+// One-time setup of the database: see docs/MENU-API.md.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "hswt-navigator",
   "compatibility_date": "2026-10-01",
+  "main": "worker/index.js",
   "assets": {
     "directory": "./"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "hswt-menus",
+      "database_id": "REPLACE-WITH-YOUR-D1-DATABASE-ID"
+    }
+  ],
+  // Menus are published early in the morning and sometimes corrected later (times in UTC).
+  "triggers": {
+    "crons": ["17 4 * * *", "17 9 * * 1-5"]
+  },
+  "observability": {
+    "enabled": true
   }
 }
