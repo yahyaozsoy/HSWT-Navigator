@@ -24,6 +24,13 @@ if (!file || !base || !token) {
   process.exit(2);
 }
 
+// The token must never travel unencrypted (http is only fine for a local `wrangler dev`).
+const { protocol, hostname } = new URL(base);
+if (protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(hostname)) {
+  console.error('MENU_API_URL must start with https://');
+  process.exit(2);
+}
+
 const week = JSON.parse(readFileSync(file, 'utf8'));
 let failed = 0;
 for (const day of week.days ?? []) {

@@ -14,7 +14,12 @@ const MAX_DISHES = 60;
 
 export { isoWeek };
 
-export const isDate = (s) => typeof s === 'string' && DATE.test(s) && !Number.isNaN(Date.parse(`${s}T12:00:00Z`));
+// A real calendar day: '2026-02-31' is refused (Date would quietly roll it over to 3 March).
+export const isDate = (s) => {
+  if (typeof s !== 'string' || !DATE.test(s)) return false;
+  const t = Date.parse(`${s}T12:00:00Z`);
+  return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === s;
+};
 
 const text = (s, max) => (typeof s === 'string' ? s.replace(/\s+/g, ' ').trim().slice(0, max) : '');
 const amount = (n) => (typeof n === 'number' && Number.isFinite(n) && n >= 0 && n < 1000 ? Math.round(n * 100) / 100 : null);

@@ -3,7 +3,7 @@
 //
 //   GET    /api/menus/canteens.json                     canteens and where their menus come from
 //   GET    /api/menus/[en/]<canteen>/<year>/<week>.json  a week in eat-api format (404 if nothing stored)
-//   GET    /api/menus/status                             stored days per canteen, latest sync runs
+//   GET    /api/menus/admin/status                       stored days per canteen, latest syncs (Bearer MENU_ADMIN_TOKEN)
 //   PUT    /api/menus/admin/<canteen>/<date>?lang=de     enter a day by hand   (Bearer MENU_ADMIN_TOKEN)
 //   DELETE /api/menus/admin/<canteen>/<date>?lang=de     remove a day         (Bearer MENU_ADMIN_TOKEN)
 //   POST   /api/menus/admin/sync                         run the sync now      (Bearer MENU_ADMIN_TOKEN)
@@ -19,6 +19,7 @@ const EAT_API = 'https://tum-dev.github.io/eat-api';
 const EAT_API_RAW = 'https://raw.githubusercontent.com/TUM-Dev/eat-api/gh-pages';
 const FETCH_TIMEOUT_MS = 15000;
 const MAX_BODY_BYTES = 64 * 1024;
+const MAX_UPSTREAM_BYTES = 2 * 1024 * 1024; // an eat-api week is ~10–30 KB
 
 const BASE_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
@@ -45,7 +46,11 @@ async function fetchWeek(fetchImpl, canteen, lang, year, week) {
       headers: { 'user-agent': 'hswt-navigator-menu-sync' },
     }).catch(() => null);
     if (res?.status === 404) return null;
-    if (res?.ok) return res.json();
+    if (res?.ok) {
+      const body = await res.text();
+      if (body.length > MAX_UPSTREAM_BYTES) throw new Error('eat-api answer too large');
+      return JSON.parse(body);
+    }
   }
   throw new Error('eat-api unreachable');
 }
@@ -113,6 +118,10 @@ async function admin(request, env, ctx, parts) {
   if (parts.length === 1 && parts[0] === 'sync' && request.method === 'POST') {
     return json({ log: await sync(env) }, 200, { cors: false });
   }
+  // Reads the whole table: admin only, so it can't be used to run up the database quota.
+  if (parts.length === 1 && parts[0] === 'status' && request.method === 'GET') {
+    return json(await status(env.DB), 200, { cors: false });
+  }
   const [canteen, date] = parts;
   const lang = new URL(request.url).searchParams.get('lang') ?? 'de';
   if (parts.length !== 2 || !canteenById[canteen] || !isDate(date) || !LANGS.includes(lang)) return json({ error: 'bad request' }, 400, { cors: false });
@@ -142,12 +151,15 @@ async function admin(request, env, ctx, parts) {
 
 const edgeCache = () => (typeof caches !== 'undefined' ? caches.default : null);
 
+// Cached by path only: a query string (?x=random) can't be used to skip the cache and reach D1.
 async function cached(request, ctx, produce) {
+  const url = new URL(request.url);
+  const key = new Request(`${url.origin}${url.pathname}`);
   const cache = request.method === 'GET' ? edgeCache() : null;
-  const hit = await cache?.match(request);
+  const hit = await cache?.match(key);
   if (hit) return hit;
   const res = await produce();
-  if (cache && res.ok) ctx.waitUntil(cache.put(request, res.clone()));
+  if (cache && res.ok) ctx.waitUntil(cache.put(key, res.clone()));
   return res;
 }
 
@@ -167,7 +179,6 @@ async function handle(request, env, ctx) {
       { cache: 3600 },
     );
   }
-  if (rest === 'status') return json(await status(env.DB), 200, { cache: 60 });
 
   const q = parseMenuPath(url.pathname);
   if (!q || !canteenById[q.canteen]) return notFound();
