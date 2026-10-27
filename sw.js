@@ -1,6 +1,6 @@
 // Offline support: the app shell is network-first with a cached fallback; map tiles the user has
 // seen are kept (in a separate, size-limited cache) so the map works with patchy campus Wi-Fi.
-const CACHE = 'hswt-navigator-v12';
+const CACHE = 'hswt-navigator-v13';
 const TILES = 'hswt-tiles-v1';
 const MAX_TILES = 600; // roughly 10 MB
 const SHELL = [

@@ -385,6 +385,14 @@ a {
   color: var(--on-surface);
 }
 
+/* Native option lists take the select's (translucent) background on some systems, which leaves
+   light text on a white list in dark mode: give every option list solid theme colours. */
+select option,
+select optgroup {
+  background-color: var(--surface-container-high);
+  color: var(--on-surface);
+}
+
 /* ---------- views ---------- */
 main {
   position: fixed;

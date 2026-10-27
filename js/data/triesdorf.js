@@ -76,10 +76,12 @@ const canteens = [
   },
 ];
 
+// The site plan doesn't mark the library; HSWT's library guide puts it in room A.004. Like the
+// offices in Weihenstephan it is shown inside its building, not as a marker of its own.
 const study = [
   {
     id: 'library',
-    kind: 'study',
+    kind: 'service',
     category: 'study',
     name: { de: 'HSWT Teilbibliothek Triesdorf', en: 'HSWT Branch Library Triesdorf' },
     description: { de: 'Raum A.004 · Ausleihe, Lernplätze', en: 'Room A.004 · lending, study spaces' },
@@ -87,9 +89,14 @@ const study = [
     building: 'A',
     room: 'A.004',
     aliases: ['Bibliothek', 'Library', 'Teilbibliothek', 'Lernplatz', 'Lernen', 'Study', 'A.004'],
-    latlng: [49.202712, 10.652595], // OSM amenity=library
+    latlng: geo.buildings.A.latlng,
   },
 ];
+for (const s of study) {
+  const b = buildings.find((x) => x.id === s.building);
+  b.services.push(s.id);
+  b.description = { de: s.name.de, en: s.name.en };
+}
 
 // Campusseelsorge is campus life; the other numbered buildings are landmarks people ask for.
 const neighbours = Object.entries(geo.neighbours).map(([num, n]) =>
